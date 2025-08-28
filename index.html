@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cash Timer</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin-top: 40px;
+      background-color: #121212;  
+      color: #e0e0e0;            
+    }
+
+    input, button {
+      margin: 5px;
+      padding: 10px 15px;
+      font-size: 16px;
+      border-radius: 6px;
+      border: none;
+      outline: none;
+    }
+    input {
+      background-color: #1e1e1e;
+      color: #e0e0e0;
+      border: 1px solid #333;
+    }
+    button {
+      background-color: #333;
+      color: #e0e0e0;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background-color: #444;
+    }
+
+    #display {
+      font-size: 2.5em;
+      margin-top: 25px;
+      color: #00ff99;
+      text-shadow: 0 0 8px #00ff99;
+    }
+
+    #logList {
+      margin-top: 30px;
+      text-align: left;
+      max-width: 400px;
+      margin-left: auto;
+      margin-right: auto;
+      background: #1e1e1e;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    }
+    #logList h2 {
+      margin-top: 0;
+      color: #00ff99;
+    }
+    #logList ul {
+      list-style: none;
+      padding: 0;
+    }
+    #logList li {
+      padding: 6px 0;
+      border-bottom: 1px solid #333;
+      font-family: monospace;
+    }
+
+    /* GitHub logo link */
+    #github-link {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+    }
+    #github-link img {
+      width: 32px;
+      height: 32px;
+      filter: invert(1);
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    #github-link img:hover {
+      transform: scale(1.1);
+    }
+  </style>
+</head>
+<body>
+  <!-- GitHub logo at the top right -->
+  <!-- ==============================
+       👇 EDIT THIS LINK TO YOUR REPO
+       Example: href="https://github.com/YourUser/YourRepo"
+       ============================== -->
+  <a id="github-link" href="https://github.com" target="_blank">
+    <img src="https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/github.svg" alt="GitHub">
+  </a>
+
+  <h1>💵 Cash Accumulator</h1>
+
+  <!-- Hourly rate input -->
+  <input type="number" id="rate" placeholder="Hourly Rate ($)" step="0.01">
+  <br>
+
+  <!-- Timer controls -->
+  <button onclick="startTimer()">Start</button>
+  <button onclick="togglePause()"><span id="pauseText">Pause</span></button>
+  <button onclick="resetTimer()">Reset</button>
+  <button onclick="logValue()">Log</button>
+  <button onclick="clearLogs()">Clear Logs</button>
+
+  <!-- Main money counter -->
+  <div id="display">$0.00.00</div>
+
+  <!-- Log area -->
+  <div id="logList">
+    <h2>Log</h2>
+    <ul id="logs"></ul>
+  </div>
+
+  <script>
+    // ==============================
+    // VARIABLES
+    // ==============================
+    let timer = null;       
+    let accumulated = 0;    
+    let lastTimestamp = null;
+    let isPaused = true;    
+    let rate = 0;           
+    let logs = [];          
+
+    // ==============================
+    // LOAD SAVED STATE
+    // ==============================
+    function loadState() {
+      const saved = JSON.parse(localStorage.getItem("cashTimerState"));
+      if (saved) {
+        accumulated = saved.accumulated || 0;
+        lastTimestamp = saved.lastTimestamp || null;
+        rate = saved.rate || 0;
+        isPaused = saved.isPaused;
+
+        if (!isPaused && lastTimestamp) {
+          const elapsed = (Date.now() - lastTimestamp) / 3600000;
+          accumulated += elapsed * rate;
+          lastTimestamp = Date.now();
+        }
+        document.getElementById("rate").value = rate || "";
+        updateDisplay();
+        if (!isPaused) startInterval();
+      }
+
+      const savedLogs = JSON.parse(localStorage.getItem("cashTimerLogs"));
+      if (savedLogs) {
+        logs = savedLogs;
+        renderLogs();
+      }
+    }
+
+    // Save timer state
+    function saveState() {
+      localStorage.setItem("cashTimerState", JSON.stringify({
+        accumulated,
+        lastTimestamp,
+        rate,
+        isPaused
+      }));
+    }
+
+    // Save logs
+    function saveLogs() {
+      localStorage.setItem("cashTimerLogs", JSON.stringify(logs));
+    }
+
+    // ==============================
+    // DISPLAY FORMATTING
+    // ==============================
+    function formatMoney(value) {
+      let totalCents = Math.floor(value * 10000);
+      let dollars = Math.floor(totalCents / 10000);
+      let cents = Math.floor((totalCents % 10000) / 100);
+      let subCents = totalCents % 100;
+
+      return `$${dollars}.${cents.toString().padStart(2, "0")}.${subCents
+        .toString()
+        .padStart(2, "0")}`;
+    }
+
+    function updateDisplay() {
+      document.getElementById("display").textContent = formatMoney(accumulated);
+    }
+
+    // ==============================
+    // TIMER LOGIC
+    // ==============================
+    function tick() {
+      if (!isPaused) {
+        const now = Date.now();
+        const elapsed = (now - lastTimestamp) / 3600000;
+        accumulated += elapsed * rate;
+        lastTimestamp = now;
+        updateDisplay();
+        saveState();
+      }
+    }
+
+    function startInterval() {
+      if (!timer) {
+        timer = setInterval(tick, 100);
+      }
+    }
+
+    function startTimer() {
+      rate = parseFloat(document.getElementById("rate").value) || 0;
+      if (rate <= 0) return alert("Please enter a valid hourly rate.");
+      if (isPaused) {
+        lastTimestamp = Date.now();
+        isPaused = false;
+        document.getElementById("pauseText").textContent = "Pause";
+        startInterval();
+        saveState();
+      }
+    }
+
+    function togglePause() {
+      if (isPaused) {
+        lastTimestamp = Date.now();
+        isPaused = false;
+        document.getElementById("pauseText").textContent = "Pause";
+        startInterval();
+      } else {
+        tick();
+        isPaused = true;
+        document.getElementById("pauseText").textContent = "Play";
+      }
+      saveState();
+    }
+
+    function resetTimer() {
+      clearInterval(timer);
+      timer = null;
+      accumulated = 0;
+      lastTimestamp = null;
+      isPaused = true;
+      rate = 0;
+      document.getElementById("rate").value = "";
+      document.getElementById("pauseText").textContent = "Pause";
+      updateDisplay();
+      localStorage.removeItem("cashTimerState");
+    }
+
+    // ==============================
+    // LOG FUNCTIONS
+    // ==============================
+    function logValue() {
+      const now = new Date();
+      const timestamp = now.toLocaleString();
+      const value = formatMoney(accumulated);
+      logs.push(`${timestamp} → ${value}`);
+      renderLogs();
+      saveLogs();
+    }
+
+    function renderLogs() {
+      const logUl = document.getElementById("logs");
+      logUl.innerHTML = "";
+      logs.forEach(entry => {
+        const li = document.createElement("li");
+        li.textContent = entry;
+        logUl.appendChild(li);
+      });
+    }
+
+    function clearLogs() {
+      logs = [];
+      renderLogs();
+      localStorage.removeItem("cashTimerLogs");
+    }
+
+    // ==============================
+    // INITIAL LOAD
+    // ==============================
+    loadState();
+  </script>
+</body>
+</html>
