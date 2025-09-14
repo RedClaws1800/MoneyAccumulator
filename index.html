@@ -11,7 +11,6 @@
       background-color: #121212;  
       color: #e0e0e0;            
     }
-
     input, button {
       margin: 5px;
       padding: 10px 15px;
@@ -34,14 +33,12 @@
     button:hover {
       background-color: #444;
     }
-
     #display {
       font-size: 2.5em;
       margin-top: 25px;
       color: #00ff99;
       text-shadow: 0 0 8px #00ff99;
     }
-
     #logList {
       margin-top: 30px;
       text-align: left;
@@ -66,8 +63,11 @@
       border-bottom: 1px solid #333;
       font-family: monospace;
     }
-
-    /* GitHub logo link */
+    #totals {
+      margin-top: 10px;
+      font-family: monospace;
+      color: #00ff99;
+    }
     #github-link {
       position: absolute;
       top: 15px;
@@ -89,57 +89,49 @@
   <a id="github-link" href="https://github.com/RedClaws1800/MoneyAccumulator" target="_blank">
     <img src="https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/github.svg" alt="GitHub">
   </a>
+  <h1>💵 Money Accumulator</h1>
 
-  <h1>💵 Cash Accumulator</h1>
+  <input type="number" id="rate" placeholder="Hourly Rate ($)" step="0.01"> <br>
+  <input type="number" id="tax" placeholder="Tax % (e.g. 13.6)" step="0.01"> <br>
 
-  <!-- Hourly rate input -->
-  <input type="number" id="rate" placeholder="Hourly Rate ($)" step="0.01">
-  <br>
-
-  <!-- Timer controls -->
   <button onclick="startTimer()">Start</button>
   <button onclick="togglePause()"><span id="pauseText">Pause</span></button>
   <button onclick="resetTimer()">Reset</button>
   <button onclick="logValue()">Log</button>
   <button onclick="clearLogs()">Clear Logs</button>
 
-  <!-- Main money counter -->
   <div id="display">$0.00.00</div>
 
-  <!-- Log area -->
   <div id="logList">
     <h2>Log</h2>
     <ul id="logs"></ul>
+    <div id="totals"></div>
   </div>
 
   <script>
-    // ==============================
-    // VARIABLES
-    // ==============================
-    let timer = null;       
-    let accumulated = 0;    
+    let timer = null;
+    let accumulated = 0;
     let lastTimestamp = null;
-    let isPaused = true;    
-    let rate = 0;           
-    let logs = [];          
+    let isPaused = true;
+    let rate = 0;
+    let tax = 0;
+    let logs = [];
 
-    // ==============================
-    // LOAD SAVED STATE
-    // ==============================
     function loadState() {
       const saved = JSON.parse(localStorage.getItem("cashTimerState"));
       if (saved) {
         accumulated = saved.accumulated || 0;
         lastTimestamp = saved.lastTimestamp || null;
         rate = saved.rate || 0;
+        tax = saved.tax || 0;
         isPaused = saved.isPaused;
-
         if (!isPaused && lastTimestamp) {
           const elapsed = (Date.now() - lastTimestamp) / 3600000;
-          accumulated += elapsed * rate;
+          accumulated += elapsed * rate * (1 - tax / 100);
           lastTimestamp = Date.now();
         }
         document.getElementById("rate").value = rate || "";
+        document.getElementById("tax").value = tax || "";
         updateDisplay();
         if (!isPaused) startInterval();
       }
@@ -151,47 +143,37 @@
       }
     }
 
-    // Save timer state
     function saveState() {
       localStorage.setItem("cashTimerState", JSON.stringify({
         accumulated,
         lastTimestamp,
         rate,
+        tax,
         isPaused
       }));
     }
 
-    // Save logs
     function saveLogs() {
       localStorage.setItem("cashTimerLogs", JSON.stringify(logs));
     }
 
-    // ==============================
-    // DISPLAY FORMATTING
-    // ==============================
     function formatMoney(value) {
       let totalCents = Math.floor(value * 10000);
       let dollars = Math.floor(totalCents / 10000);
       let cents = Math.floor((totalCents % 10000) / 100);
       let subCents = totalCents % 100;
-
-      return `$${dollars}.${cents.toString().padStart(2, "0")}.${subCents
-        .toString()
-        .padStart(2, "0")}`;
+      return `$${dollars}.${cents.toString().padStart(2, "0")}.${subCents.toString().padStart(2, "0")}`;
     }
 
     function updateDisplay() {
       document.getElementById("display").textContent = formatMoney(accumulated);
     }
 
-    // ==============================
-    // TIMER LOGIC
-    // ==============================
     function tick() {
       if (!isPaused) {
         const now = Date.now();
         const elapsed = (now - lastTimestamp) / 3600000;
-        accumulated += elapsed * rate;
+        accumulated += elapsed * rate * (1 - tax / 100);
         lastTimestamp = now;
         updateDisplay();
         saveState();
@@ -199,13 +181,12 @@
     }
 
     function startInterval() {
-      if (!timer) {
-        timer = setInterval(tick, 100);
-      }
+      if (!timer) timer = setInterval(tick, 100);
     }
 
     function startTimer() {
       rate = parseFloat(document.getElementById("rate").value) || 0;
+      tax = parseFloat(document.getElementById("tax").value) || 0;
       if (rate <= 0) return alert("Please enter a valid hourly rate.");
       if (isPaused) {
         lastTimestamp = Date.now();
@@ -237,20 +218,20 @@
       lastTimestamp = null;
       isPaused = true;
       rate = 0;
+      tax = 0;
       document.getElementById("rate").value = "";
+      document.getElementById("tax").value = "";
       document.getElementById("pauseText").textContent = "Pause";
       updateDisplay();
       localStorage.removeItem("cashTimerState");
     }
 
-    // ==============================
-    // LOG FUNCTIONS
-    // ==============================
     function logValue() {
       const now = new Date();
       const timestamp = now.toLocaleString();
-      const value = formatMoney(accumulated);
-      logs.push(`${timestamp} → ${value}`);
+      const gross = accumulated / (1 - tax / 100);
+      const net = accumulated;
+      logs.push(`${timestamp} → Gross: ${formatMoney(gross)} | Net: ${formatMoney(net)}`);
       renderLogs();
       saveLogs();
     }
@@ -258,11 +239,17 @@
     function renderLogs() {
       const logUl = document.getElementById("logs");
       logUl.innerHTML = "";
+      let totalGross = 0, totalNet = 0;
       logs.forEach(entry => {
         const li = document.createElement("li");
         li.textContent = entry;
         logUl.appendChild(li);
+        const match = entry.match(/Gross: \$(\d+\.\d+)/);
+        const matchNet = entry.match(/Net: \$(\d+\.\d+)/);
+        if (match) totalGross += parseFloat(match[1]);
+        if (matchNet) totalNet += parseFloat(matchNet[1]);
       });
+      document.getElementById("totals").textContent = `TOTAL → Gross: $${totalGross.toFixed(2)} | Net: $${totalNet.toFixed(2)}`;
     }
 
     function clearLogs() {
@@ -271,12 +258,7 @@
       localStorage.removeItem("cashTimerLogs");
     }
 
-    // ==============================
-    // INITIAL LOAD
-    // ==============================
     loadState();
   </script>
 </body>
 </html>
-
-
